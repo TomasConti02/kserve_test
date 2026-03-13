@@ -1,0 +1,7 @@
+docker build -t tomas/simple-cnn-copy:1.0 .
+# Se sei su kind, non serve il push, basta fare:
+kind load docker-image tomas/simple-cnn-copy:1.0
+
+
+mkdir -p model
+cp -r model_repo/1/* model/

@@ -1,0 +1,11 @@
+apiVersion: "serving.kserve.io/v1beta1"
+kind: "InferenceService"
+metadata:
+  name: "simple-cnn"
+spec:
+  predictor:
+    containers:
+    - name: kserve-container
+      image: simple-cnn-model:v1
+      # FORZA Kubernetes a usare solo l'immagine locale
+      imagePullPolicy: Never
