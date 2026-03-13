@@ -1,0 +1,50 @@
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: model-pvc
+spec:
+  accessModes:
+    - ReadWriteOnce
+  resources:
+    requests:
+      storage: 100Mi
+####################################
+apiVersion: v1
+kind: Pod
+metadata:
+  name: file-transfer
+spec:
+  containers:
+  - name: helper
+    image: alpine
+    command: ["sleep", "3600"]
+    volumeMounts:
+    - name: model-storage
+      mountPath: /data
+  volumes:
+  - name: model-storage
+    persistentVolumeClaim:
+      claimName: model-pvc
+####################################
+kubectl apply -f pod-helper.yaml
+kubectl cp ./model_repo file-transfer:/data/
+###########################################
+apiVersion: "serving.kserve.io/v1beta1"
+kind: "InferenceService"
+metadata:
+  name: "simple-cnn"
+spec:
+  predictor:
+    tensorflow:
+      storageUri: "pvc://model-pvc/model_repo"
+##############################################
+kubectl port-forward --namespace istio-system svc/istio-ingressgateway 8080:80
+###############################################
+creare il payload di testo
+
+python3 -c 'import json, numpy as np; print(json.dumps({"instances": np.zeros((1, 28, 28, 1)).tolist()}))' > input.json
+######################################################
+curl -v -H "Host: simple-cnn.default.example.com" \
+  -H "Content-Type: application/json" \
+  http://localhost:8080/v1/models/simple-cnn:predict \
+  -d @input.json

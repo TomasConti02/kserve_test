@@ -1,0 +1,16 @@
+apiVersion: "serving.kserve.io/v1beta1"
+kind: "InferenceService"
+metadata:
+  name: "simple-cnn"
+spec:
+  predictor:
+    tensorflow:
+      # KServe cercherà il modello nella root del PVC specificato
+      storageUri: "pvc://model-pvc/model_repo"
+      resources:
+        requests:
+          cpu: 100m
+          memory: 256Mi
+        limits:
+          cpu: 500m
+          memory: 512Mi
