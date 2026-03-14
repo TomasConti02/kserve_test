@@ -1,0 +1,5 @@
+docker tag tomas/simple-cnn-copy:1.0 tomasconti02/simple-cnn-copy:1.0
+docker login
+docker push tomasconti02/simple-cnn-copy:1.0
+
+now all is in the docker hub, i have only to transfert all into the system
