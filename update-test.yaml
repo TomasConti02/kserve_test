@@ -1,0 +1,14 @@
+apiVersion: serving.kserve.io/v1beta1
+kind: InferenceService
+metadata:
+  name: simple-cnn
+spec:
+  predictor:
+    traffic:
+      - tag: blue
+        latestRevision: true
+        percent: 90
+      - tag: green
+        latestRevision: false
+        revisionName: simple-cnn-predictor-00001
+        percent: 10

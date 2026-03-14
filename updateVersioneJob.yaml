@@ -1,34 +1,21 @@
-apiVersion: v1
-kind: PersistentVolumeClaim
-metadata:
-  name: simple-cnn-pvc
-spec:
-  accessModes:
-  - ReadWriteOnce
-  resources:
-    requests:
-      storage: 100Mi
----
 apiVersion: batch/v1
 kind: Job
 metadata:
-  name: simple-cnn-copy-job
+  name: simple-cnn-copy-job-v2
 spec:
   ttlSecondsAfterFinished: 10
-  backoffLimit: 1
   template:
     spec:
       restartPolicy: OnFailure
       containers:
       - name: model-writer
-        # La tua immagine pubblica su Docker Hub
-        image: tomasconti02/simple-cnn-copy:1.0
+        image: tomasconti02/simple-cnn-copy:1.1 # Immagine specifica per la v1.1
         command: [ "/bin/sh", "-c" ]
         args:
         - |
-          mkdir -p /mnt/models/1;
-          cp -r /app/model/* /mnt/models/1/;
-          ls -lh /mnt/models/1;
+          mkdir -p /mnt/models/2; # Creiamo la cartella per la versione 2
+          cp -r /app/model/* /mnt/models/2/;
+          ls -lh /mnt/models/2;
         volumeMounts:
         - name: model-storage
           mountPath: /mnt/models

@@ -1,0 +1,10 @@
+apiVersion: serving.kserve.io/v1beta1
+kind: InferenceService
+metadata:
+  name: simple-cnn
+spec:
+  predictor:
+    minReplicas: 1
+    canaryTrafficPercent: 20  # Invia il 20% del traffico al nuovo modello
+    tensorflow:
+      storageUri: "s3://tuo-bucket/models/cnn-v2" # Punta alla nuova versione
