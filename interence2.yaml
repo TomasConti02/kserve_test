@@ -1,0 +1,9 @@
+apiVersion: "serving.kserve.io/v1beta1"
+kind: "InferenceService"
+metadata:
+  name: "simple-cnn"
+spec:
+  predictor:
+    canaryTrafficPercent: 20
+    tensorflow:
+      storageUri: "pvc://simple-cnn-pvc2/"   

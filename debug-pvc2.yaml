@@ -1,0 +1,16 @@
+apiVersion: v1
+kind: Pod
+metadata:
+  name: debug-pvc2
+spec:
+  volumes:
+  - name: model-storage
+    persistentVolumeClaim:
+      claimName: simple-cnn-pvc2
+  containers:
+  - name: debug
+    image: busybox
+    command: ["sleep", "3600"]
+    volumeMounts:
+    - name: model-storage
+      mountPath: /mnt/models
