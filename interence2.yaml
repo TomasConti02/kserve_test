@@ -4,6 +4,6 @@ metadata:
   name: "simple-cnn"
 spec:
   predictor:
-    canaryTrafficPercent: 50
+    canaryTrafficPercent: 20
     tensorflow:
       storageUri: "pvc://simple-cnn-pvc2/"   
