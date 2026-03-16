@@ -1,0 +1,19 @@
+apiVersion: "serving.kserve.io/v1beta1"
+kind: "InferenceService"
+metadata:
+  name: "drift-detector"
+spec:
+  predictor:
+    containers:
+    - name: kserve-container
+      image: tomasconti02/drift-detector:v1
+      imagePullPolicy: IfNotPresent
+      ports:
+        - containerPort: 8080
+      resources:
+        limits:
+          cpu: "1"
+          memory: "4Gi"
+        requests:
+          cpu: "1"
+          memory: "2Gi"

@@ -1,0 +1,22 @@
+docker build -t drift-detector:v1 .
+kind load docker-image drift-detector:v1
+# Tagga l'immagine esistente
+docker tag drift-detector:v1 tomasconti02/drift-detector:v1
+docker push tomasconti02/drift-detector:v1
+
+
+
+kubectl get isvc drift-detector
+kubectl get ig mnist-monitoring-graph
+
+
+
+
+curl -v -H "Host: drift-detector.default.example.com" \
+  -H "Content-Type: application/json" \
+  -X POST \
+  http://localhost:8080/predict \
+  -d '{"instances": [['$(python3 -c "print(','.join(['0.0']*784))")']]}'
+
+
+kubectl logs -l serving.kserve.io/inferenceservice=drift-detector -c kserve-container

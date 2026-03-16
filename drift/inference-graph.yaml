@@ -1,0 +1,15 @@
+apiVersion: "serving.kserve.io/v1alpha1"
+kind: "InferenceGraph"
+metadata:
+  name: "mnist-monitoring-graph"
+spec:
+  nodes:
+    root:
+      routerType: "Splitter"
+      steps:
+        - serviceName: "simple-cnn"
+          name: "predictor"
+          weight: 50
+        - serviceName: "drift-detector"
+          name: "drift"
+          weight: 50

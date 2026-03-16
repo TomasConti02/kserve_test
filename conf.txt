@@ -1,48 +1,96 @@
-helm repo add kiali https://kiali.org/helm-charts
 helm repo add prometheus-community https://prometheus-community.github.io/helm-charts
-helm repo add grafana https://grafana.github.io/helm-charts
 helm repo update
 
-
-
-# Prometheus (il database delle metriche)
 helm install prometheus prometheus-community/prometheus \
   --namespace istio-system \
   --set server.persistentVolume.enabled=false \
   --set alertmanager.enabled=false \
   --set pushgateway.enabled=false
 
-# Grafana (la dashboard)
+helm repo add grafana https://grafana.github.io/helm-charts
+helm repo update
+
 helm install grafana grafana/grafana \
   --namespace istio-system \
   --set persistence.enabled=false \
-  --set adminPassword="admin"
+  --set adminPassword="admin" \
+  --set "datasources.datasources\.yaml.apiVersion=1" \
+  --set "datasources.datasources\.yaml.datasources[0].name=Prometheus" \
+  --set "datasources.datasources\.yaml.datasources[0].type=prometheus" \
+  --set "datasources.datasources\.yaml.datasources[0].url=http://prometheus-server.istio-system:80" \
+  --set "datasources.datasources\.yaml.datasources[0].access=proxy" \
+  --set "datasources.datasources\.yaml.datasources[0].isDefault=true"
 
 
 
 
+helm repo add kiali https://kiali.org/helm-charts
+helm repo update
 
-# Collega Kiali a Prometheus
-kubectl patch kiali kiali -n istio-system --type merge \
-  -p '{"spec":{"external_services":{"prometheus":{"url":"http://prometheus-server.istio-system:80"}}}}'
-
-# Collega Kiali a Grafana
-kubectl patch kiali kiali -n istio-system --type merge \
-  -p '{"spec":{"external_services":{"grafana":{"url":"http://grafana.istio-system:80"}}}}'
-
-# Riavvio necessario per applicare le modifiche
-kubectl rollout restart deployment kiali -n istio-system
+helm install kiali kiali/kiali-server \
+  --namespace istio-system \
+  --set auth.strategy="anonymous" \
+  --set external_services.prometheus.url="http://prometheus-server.istio-system:80" \
+  --set external_services.grafana.external_url="http://grafana.istio-system:80" \
+  --set external_services.grafana.internal_url="http://grafana.istio-system:80"
 
 
+
+
+kubectl get pods -n istio-system -w
 
 kubectl port-forward svc/kiali -n istio-system 20001:20001
-# Apri: http://localhost:20001
-
-
-
-kubectl port-forward svc/grafana -n istio-system 3000:80
-# Apri: http://localhost:3000 (User: admin, Pass: admin)
-
 
 
 for i in {1..60}; do python3 request_script.py; sleep 1; done
+########################################################################################
+kubectl get ns istio-system || kubectl create namespace istio-system
+
+helm repo add prometheus-community https://prometheus-community.github.io/helm-charts
+helm repo update
+
+helm install prometheus prometheus-community/prometheus \
+  --namespace istio-system \
+  --set server.persistentVolume.enabled=false \
+  --set alertmanager.enabled=false \
+  --set pushgateway.enabled=false
+
+
+helm repo add grafana https://grafana.github.io/helm-charts
+helm repo update
+
+helm install grafana grafana/grafana \
+  --namespace istio-system \
+  --set persistence.enabled=false \
+  --set adminPassword=admin \
+  --set service.port=80
+
+
+helm repo add kiali https://kiali.org/helm-charts
+helm repo update
+
+helm install kiali kiali/kiali-server \
+  --namespace istio-system \
+  --set auth.strategy=anonymous \
+  --set external_services.prometheus.url=http://prometheus-server.istio-system \
+  --set external_services.grafana.external_url=http://grafana.istio-system
+
+#######################################################################################
+MODIFICA ALLA KIALI
+
+
+
+
+helm install kiali kiali/kiali-server \
+  --namespace istio-system \
+  --set auth.strategy="anonymous" \
+  --set external_services.prometheus.url="http://prometheus-server.istio-system:80" \
+  --set external_services.grafana.external_url="http://grafana.istio-system:80" \
+  --set external_services.grafana.internal_url="http://grafana.istio-system:80"
+######################################################################################
+helm upgrade kiali kiali/kiali-server \
+  --namespace istio-system \
+  --set auth.strategy="anonymous" \
+  --set external_services.prometheus.url="http://prometheus-server.istio-system:80" \
+  --set external_services.grafana.url="http://grafana.istio-system:80" \
+  --set external_services.grafana.internal_url="http://grafana.istio-system:80"

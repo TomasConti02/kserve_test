@@ -1,0 +1,6 @@
+fastapi
+uvicorn
+alibi-detect
+tensorflow
+joblib
+numpy
