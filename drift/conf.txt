@@ -5,7 +5,7 @@ docker tag drift-detector:v1 tomasconti02/drift-detector:v1
 docker push tomasconti02/drift-detector:v1
 
 
-
+kubectl get isvc
 kubectl get isvc drift-detector
 kubectl get ig mnist-monitoring-graph
 
@@ -20,3 +20,33 @@ curl -v -H "Host: drift-detector.default.example.com" \
 
 
 kubectl logs -l serving.kserve.io/inferenceservice=drift-detector -c kserve-container
+
+
+curl -v \
+-H "Host: drift-detector.default.example.com" \
+-H "Content-Type: application/json" \
+POST http://localhost:8080/predict \
+-d @payload.json
+
+ curl -v -H "Host: drift-detector.default.example.com" \
+     -H "Content-Type: application/json" \
+     -X POST http://localhost:8080/v1/models/drift-detector:predict \
+     -d @payload.json
+########################################################################
+curl -H "Host: mnist-monitoring-graph.default.example.com" \
+-H "Content-Type: application/json" \
+http://localhost:8080/v1/models/mnist-monitoring-graph:predict \
+-d @mnist_sample_4d.json
+
+
+
+
+curl -v -H "Host: mnist-monitoring-graph.default.example.com" \
+     -H "Content-Type: application/json" \
+     -X POST http://localhost:8080/v1/models/mnist-monitoring-graph:predict \
+     -d @mnist_sample_4d.json
+
+
+
+
+
