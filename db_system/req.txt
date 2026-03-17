@@ -1,0 +1,5 @@
+S3 (MinIO): Archivia l'immagine grezza.
+
+Vector DB (Qdrant/Milvus): Archivia l'embedding generato dalla CNN e calcola la distanza dai dati storici.
+
+PostgreSQL: Salva il "verdetto" (es. image_01.jpg -> drift_score: 0.85, status: needs_relabeling).

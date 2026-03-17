@@ -1,0 +1,26 @@
+docker compose up -d
+
+pip install qdrant-client boto3 psycopg2-binary
+
+curl -X POST -F "file=@hist2.png" http://localhost:8000/predict
+
+# Build dell'immagine
+docker build -t cnn-drift-service:latest .
+
+# Run del container (collegandolo alla rete dei database)
+# Nota: dovremo cambiare localhost con i nomi dei servizi nel codice app.py
+# se vogliamo che comunichino dentro Docker, o usare --network="host" per test rapido
+docker run -p 8000:8000 --network="host" cnn-drift-service:latest+
+
+
+docker exec -it db_system-postgres-1 psql -U user -d drift_db -c "SELECT * FROM drift_log;"
+
+
+
+Nuovo dato: Arriva un'immagine.
+
+Qdrant calcola: "Quanto è diversa da quelle vecchie?". Risultato: "Molto!".
+
+MinIO dice: "Ok, la salvo nel bucket 'anomalie' per non perderla".
+
+Postgres scrive: "Ho appena salvato un'anomalia chiamata X, con score Y, salvata su MinIO al percorso Z".
