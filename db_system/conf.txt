@@ -24,3 +24,35 @@ Qdrant calcola: "Quanto è diversa da quelle vecchie?". Risultato: "Molto!".
 MinIO dice: "Ok, la salvo nel bucket 'anomalie' per non perderla".
 
 Postgres scrive: "Ho appena salvato un'anomalia chiamata X, con score Y, salvata su MinIO al percorso Z".
+
+
+
+
+Database	Ruolo	Analogia
+Qdrant	Vector DB	Il "Cervello": riconosce se un'immagine è simile a quelle viste nel training o se è un'anomalia.
+MinIO	Object Storage	Il "Magazzino": salva fisicamente i file (immagini driftate e pesi del modello .pth).
+Postgres	Relational DB	Il "Registro": tiene traccia dei log, degli score di drift e dello stato del workflow.
+
+
+
+Arriva l'Immagine: Lo script prende un'immagine (o un numero reale o del rumore casuale).
+
+Controllo di Identità (Qdrant): Prima ancora di chiedere al modello "che numero è?", lo script chiede a Qdrant: "Hai mai visto qualcosa di simile prima?".
+
+    Qdrant confronta l'immagine con le 1000 immagini "sane" che abbiamo caricato all'inizio (il Warm-up).
+
+    Se l'immagine è troppo diversa (distanza alta), scatta l'allarme Drift.
+
+Il Verdetto del Modello (KServe): In parallelo, inviamo l'immagine al modello su KServe per avere la predizione (es: "Questo è un 5").
+
+Archiviazione Prove (MinIO): L'immagine fisica viene salvata su MinIO. È come scattare una foto a ogni pacco che passa sulla catena di montaggio per poterlo ricontrollare dopo.
+
+Il Registro di Bordo (PostgreSQL): Salviamo una riga nel database SQL che dice: "Alle 16:30 è passata l'immagine X, il modello ha detto '5', ma Qdrant dice che c'è Drift".
+
+
+
+
+Componente	Ruolo	Analogia
+Qdrant	Rilevatore di Drift	Il sensore che capisce se il materiale in ingresso è "strano" o diverso dal solito.
+MinIO	Archivio Immagini	Il magazzino dove conserviamo i file fisici per le analisi future.
+Postgres	Database Log	Il registro scritto dove segniamo i risultati di ogni operazione.
