@@ -1,0 +1,64 @@
+apiVersion: "serving.kserve.io/v1beta1"
+kind: "InferenceService"
+metadata:
+  name: "simple-cnn"
+spec:
+  predictor:
+    tensorflow:
+      storageUri: "pvc://simple-cnn-pvc/"
+    # Aggiungi questa sezione:
+    logger:
+      mode: all # Opzioni: request, response, all
+      url: "http://message-dumper.default.svc.cluster.local"
+
+
+Cosa succede dopo? (Il pezzo mancante)
+
+Se inserisci quell'URL, KServe proverà a inviare i dati a un servizio chiamato message-dumper. Per far finire i dati su MinIO, hai due strade principali:
+Opzione A: Il "Sink" semplice (Ideale per test)
+
+Puoi creare un piccolo microservizio in Python (FastAPI/Flask) che:
+
+    Riceve la POST da KServe.
+
+    Usa l'SDK di MinIO (boto3) per caricare il JSON nel bucket.
+
+    Questo servizio sarà l'URL che scriverai nel campo url del logger.
+
+Opzione B: L'architettura Event-Driven (Standard KServe)
+
+In produzione si usa spesso Knative Eventing:
+
+    KServe invia i dati a un Broker.
+
+    Un Trigger intercetta i dati.
+
+    Un componente (come un Knative Kafka Source o un S3 Sink) scrive su MinIO
+#############################################################
+2. Drift degli Embedding (Dati Non Strutturati - CNN)
+
+Dato che usi una CNN, il drift non si misura sui singoli pixel, ma sulle caratteristiche astratte che il modello estrae.
+
+    Workflow:
+
+        Usi uno degli ultimi layer della tua CNN come Feature Extractor.
+
+        Passi i dati di training in questo layer e salvi i vettori risultanti su Qdrant.
+
+        Il tuo "Drift Detector" prende i nuovi dati da MinIO, genera l'embedding e interroga Qdrant.
+
+        Misura la distanza: Se la distanza media dei nuovi vettori dai "vicini" del training set aumenta drasticamente, hai un Data Drift.
+
+3. Integrazione in KServe con un "TrainedModel"
+
+KServe permette di gestire il detector come un componente dell'architettura.
+
+    Il pattern: Invece di un job separato, deployi un secondo modello su KServe (il "Detector").
+
+    Il flusso:
+
+        Il Predictor (la tua CNN) fa l'inferenza.
+
+        Il Payload Logger invia il dato al Detector.
+
+        Il Detector calcola lo score di drift e, se necessario, scrive su PostgreSQL lo stato di "allerta" per le tue dashboard.

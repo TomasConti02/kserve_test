@@ -1,0 +1,40 @@
+apiVersion: v1
+kind: Pod
+metadata:
+  name: postgres-test
+  namespace: drift-system
+spec:
+  containers:
+  - name: test
+    image: python:3.9-slim
+    command: ["/bin/sh", "-c"]
+    args:
+      - |
+        pip install --quiet psycopg2-binary &&
+        python /scripts/test_postgres.py &&
+        echo "Test completato, pod in attesa per debug..." &&
+        sleep infinity
+    env:
+    - name: POSTGRES_USER
+      valueFrom:
+        secretKeyRef:
+          name: postgres-secret
+          key: POSTGRES_USER
+    - name: POSTGRES_PASSWORD
+      valueFrom:
+        secretKeyRef:
+          name: postgres-secret
+          key: POSTGRES_PASSWORD
+    - name: POSTGRES_DB
+      valueFrom:
+        secretKeyRef:
+          name: postgres-secret
+          key: POSTGRES_DB
+    volumeMounts:
+    - name: script
+      mountPath: /scripts
+  volumes:
+  - name: script
+    configMap:
+      name: postgres-test-script
+  restartPolicy: Never

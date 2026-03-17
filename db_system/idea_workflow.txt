@@ -1,0 +1,33 @@
+Potresti aggiungere un servizio di dashboard (come Grafana) connesso a PostgreSQL per mostrare l'andamento del drift nel tempo, oppure integrare un sistema di alert (Prometheus + Alertmanager) basato sui valori di drift.
+
+
+
+3. Dettaglio del flusso (ipotesi transformer)
+
+Supponiamo di avere un modello di computer vision. Il transformer potrebbe:
+
+    Ricevere la richiesta (es. immagine in base64).
+
+    Salvare l'immagine su MinIO in un bucket dedicato (es. model-inputs), con nome univoco (timestamp + UUID).
+
+    Generare l'embedding dell'immagine (ad esempio usando un modello di feature extraction leggero, magari lo stesso modello servito, oppure un modello separato deployato su KServe). Potresti anche usare una libreria come torchvision o tensorflow per estrarre features.
+
+    Inserire l'embedding in Qdrant in una collection dedicata al modello, con payload contenente metadati (timestamp, ID richiesta, eventualmente la classe predetta).
+
+    Inoltrare la richiesta al predictor principale (il modello ML).
+
+    Ricevere la risposta dal predictor (es. classe e probabilità).
+
+    Calcolare il drift: puoi confrontare l'embedding corrente con i vettori storici presenti in Qdrant. Metriche comuni:
+
+        Distanza media dal centroide dei dati di training (se hai un riferimento).
+
+        Densità locale (LOF).
+
+        Per modelli di classificazione, potresti monitorare lo shift nella distribuzione delle probabilità (drift del modello, non dei dati).
+
+        Esistono librerie come alibi-detect che offrono detector pre-costruiti (e.g., KSDrift, MMDDrift). Puoi integrarle nel transformer.
+
+    Registrare il verdetto in PostgreSQL: tabella drift_results con campi: id, model_name, model_version, timestamp, drift_score, threshold, drift_detected (boolean), input_reference (path su MinIO), embedding_id (punto in Qdrant), ecc.
+
+    Restituire la risposta al client

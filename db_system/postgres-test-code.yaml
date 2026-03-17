@@ -1,0 +1,53 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: postgres-test-script
+  namespace: drift-system
+data:
+  test_postgres.py: |
+    import os
+    import psycopg2
+    import time
+
+    host = "postgres.drift-system.svc.cluster.local"
+    dbname = os.getenv("POSTGRES_DB", "drift_db")
+    user = os.getenv("POSTGRES_USER", "user")
+    password = os.getenv("POSTGRES_PASSWORD", "password123")
+
+    print("Attendo che PostgreSQL sia pronto...")
+    for i in range(30):
+        try:
+            conn = psycopg2.connect(
+                host=host,
+                port=5432,
+                dbname=dbname,
+                user=user,
+                password=password
+            )
+            conn.autocommit = True
+            print("✅ Connessione a PostgreSQL riuscita.")
+            break
+        except Exception as e:
+            print(f"⏳ Tentativo {i+1}/30: {e}")
+            time.sleep(1)
+    else:
+        print("❌ Impossibile connettersi a PostgreSQL dopo 30 secondi.")
+        exit(1)
+
+    # Test operativo
+    try:
+        cur = conn.cursor()
+        cur.execute("CREATE TABLE IF NOT EXISTS test (id SERIAL PRIMARY KEY, data TEXT);")
+        cur.execute("INSERT INTO test (data) VALUES ('Ciao da Kubernetes pod di test');")
+        cur.execute("SELECT * FROM test;")
+        rows = cur.fetchall()
+        print("Dati nella tabella test:", rows)
+        cur.close()
+        print("✅ Test di scrittura/lettura completato con successo.")
+    except Exception as e:
+        print("❌ Errore durante le operazioni:", e)
+        exit(1)
+    finally:
+        conn.close()
+
+    print("\n🎉 PostgreSQL è operativo. Il test è completato.")

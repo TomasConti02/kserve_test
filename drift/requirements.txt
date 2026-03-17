@@ -4,3 +4,9 @@ alibi-detect
 tensorflow
 joblib
 numpy
+
+httpx
+minio
+qdrant-client
+psycopg2-binary
+Pillow

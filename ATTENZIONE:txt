@@ -1,0 +1,30 @@
+Architettura Ideale su KServe
+
+Per implementare una soluzione robusta, dovresti farli cooperare così:
+
+    KServe Payload Logger: Invia ogni richiesta a MinIO.
+
+    Drift Detector (es. Alibi Detect o whylogs): Un componente (spesso un Transformer o un worker separato) legge da MinIO.
+
+    Processamento:
+
+        Se sono vettori, invia gli embedding a Qdrant per misurare la distanza dalla "norma".
+
+        Se sono dati strutturati, calcola le statistiche e confrontale con quelle salvate su PostgreSQL.
+
+    Alerting: Se la distanza su Qdrant o la p-value su Postgres supera una soglia, scatta l'allarme.
+
+
+apiVersion: "serving.kserve.io/v1beta1"
+kind: "InferenceService"
+metadata:
+  name: "sklearn-iris"
+spec:
+  predictor:
+    model:
+      modelFormat:
+        name: sklearn
+      storageUri: "s3://models/sklearn/iris"
+    logger:
+      mode: all # Logga sia 'request' che 'response'
+      url: "http://message-dumper.default.svc.cluster.local" # Dove inviare i dati

@@ -1,0 +1,211 @@
+import os
+import io
+import uuid
+import datetime
+import logging
+import numpy as np
+import psycopg2
+from fastapi import FastAPI, Request
+from fastapi.responses import JSONResponse
+import httpx
+from minio import Minio
+from qdrant_client import QdrantClient
+from qdrant_client.http.models import Distance, VectorParams, PointStruct
+from alibi_detect.cd import KSDrift
+import joblib
+from PIL import Image
+
+# Configurazione logging
+logging.basicConfig(level=logging.INFO)
+logger = logging.getLogger(__name__)
+
+app = FastAPI()
+
+# ================== CONFIGURAZIONE ==================
+# Variabili d'ambiente: senza default per credenziali sensibili
+MINIO_ENDPOINT = os.getenv("MINIO_ENDPOINT", "minio.drift-system.svc.cluster.local:9000")
+MINIO_ACCESS_KEY = os.getenv("MINIO_ACCESS_KEY")
+MINIO_SECRET_KEY = os.getenv("MINIO_SECRET_KEY")
+if not MINIO_ACCESS_KEY or not MINIO_SECRET_KEY:
+    logger.error("MINIO_ACCESS_KEY e MINIO_SECRET_KEY devono essere impostate")
+    raise ValueError("Credenziali MinIO mancanti")
+MINIO_BUCKET = os.getenv("MINIO_BUCKET", "model-inputs")
+
+QDRANT_HOST = os.getenv("QDRANT_HOST", "qdrant.drift-system.svc.cluster.local")
+QDRANT_PORT = int(os.getenv("QDRANT_PORT", "6333"))
+QDRANT_COLLECTION = os.getenv("QDRANT_COLLECTION", "mnist_embeddings")
+
+POSTGRES_HOST = os.getenv("POSTGRES_HOST", "postgres.drift-system.svc.cluster.local")
+POSTGRES_PORT = os.getenv("POSTGRES_PORT", "5432")
+POSTGRES_DB = os.getenv("POSTGRES_DB", "drift_db")
+POSTGRES_USER = os.getenv("POSTGRES_USER")
+POSTGRES_PASSWORD = os.getenv("POSTGRES_PASSWORD")
+if not POSTGRES_USER or not POSTGRES_PASSWORD:
+    logger.error("POSTGRES_USER e POSTGRES_PASSWORD devono essere impostate")
+    raise ValueError("Credenziali PostgreSQL mancanti")
+
+PREDICTOR_URL = os.getenv("PREDICTOR_URL", "http://simple-cnn.drift-system.svc.cluster.local/v1/models/simple-cnn:predict")
+
+# ================== INIZIALIZZAZIONE CLIENT ==================
+# MinIO
+minio_client = Minio(
+    MINIO_ENDPOINT,
+    access_key=MINIO_ACCESS_KEY,
+    secret_key=MINIO_SECRET_KEY,
+    secure=False
+)
+try:
+    if not minio_client.bucket_exists(MINIO_BUCKET):
+        minio_client.make_bucket(MINIO_BUCKET)
+        logger.info(f"Bucket {MINIO_BUCKET} creato")
+    else:
+        logger.info(f"Bucket {MINIO_BUCKET} già esistente")
+except Exception as e:
+    logger.error(f"Errore connessione MinIO: {e}")
+    raise
+
+# Qdrant
+qdrant_client = QdrantClient(host=QDRANT_HOST, port=QDRANT_PORT)
+try:
+    qdrant_client.get_collection(QDRANT_COLLECTION)
+    logger.info(f"Collection {QDRANT_COLLECTION} esistente")
+except:
+    qdrant_client.create_collection(
+        collection_name=QDRANT_COLLECTION,
+        vectors_config=VectorParams(size=784, distance=Distance.COSINE)
+    )
+    logger.info(f"Collection {QDRANT_COLLECTION} creata")
+
+# PostgreSQL
+pg_conn = psycopg2.connect(
+    host=POSTGRES_HOST,
+    port=POSTGRES_PORT,
+    dbname=POSTGRES_DB,
+    user=POSTGRES_USER,
+    password=POSTGRES_PASSWORD
+)
+pg_conn.autocommit = True
+cur = pg_conn.cursor()
+cur.execute("""
+    CREATE TABLE IF NOT EXISTS drift_results (
+        id SERIAL PRIMARY KEY,
+        model_name VARCHAR(100) NOT NULL,
+        model_version VARCHAR(50),
+        timestamp TIMESTAMPTZ DEFAULT NOW(),
+        drift_score FLOAT,
+        threshold FLOAT,
+        drift_detected BOOLEAN,
+        input_path VARCHAR(255),
+        qdrant_point_id UUID,
+        metadata JSONB
+    )
+""")
+cur.close()
+logger.info("Tabella drift_results pronta")
+
+# ================== DRIFT DETECTOR ==================
+try:
+    detector = joblib.load('my_drift_detector.pkl')
+    logger.info("Modello drift caricato")
+except Exception as e:
+    logger.error(f"Errore caricamento drift detector: {e}")
+    raise
+THRESHOLD = 0.05  # potrebbe essere parametrizzato
+
+# ================== FUNZIONI DI SUPPORTO ==================
+def image_to_bytes(image_array: np.ndarray) -> bytes:
+    img = Image.fromarray((image_array * 255).astype('uint8'), mode='L')
+    buf = io.BytesIO()
+    img.save(buf, format='PNG')
+    return buf.getvalue()
+
+def extract_embedding(image_array: np.ndarray) -> np.ndarray:
+    return image_array.reshape(784)
+
+# ================== ENDPOINT PRINCIPALE ==================
+@app.post("/v1/models/mnist-with-drift:predict")
+async def predict(request: Request):
+    payload = await request.json()
+    instances = payload.get('instances', [])
+
+    # Itera su ogni immagine nel batch
+    for i, img in enumerate(instances):
+        try:
+            # 1. Converti e normalizza
+            data = np.array(img).astype('float32')
+            if data.ndim == 3 and data.shape == (28, 28):
+                data = data.reshape(784)
+            elif data.ndim == 1 and len(data) == 784:
+                pass
+            else:
+                data = data.reshape(784)
+            data = data / 255.0
+
+            # 2. Salva su MinIO
+            img_bytes = image_to_bytes(data.reshape(28, 28))
+            object_name = f"mnist/{datetime.datetime.utcnow().isoformat()}_{uuid.uuid4()}.png"
+            minio_client.put_object(
+                MINIO_BUCKET,
+                object_name,
+                data=io.BytesIO(img_bytes),
+                length=len(img_bytes),
+                content_type="image/png"
+            )
+            logger.info(f"Immagine salvata: {object_name}")
+
+            # 3. Embedding
+            embedding = extract_embedding(data)
+
+            # 4. Inserisci in Qdrant
+            point_id = str(uuid.uuid4())
+            qdrant_client.upsert(
+                collection_name=QDRANT_COLLECTION,
+                points=[
+                    PointStruct(
+                        id=point_id,
+                        vector=embedding.tolist(),
+                        payload={
+                            "timestamp": datetime.datetime.utcnow().isoformat(),
+                            "input_path": object_name,
+                            "original_index": i
+                        }
+                    )
+                ]
+            )
+            logger.info(f"Embedding inserito in Qdrant: {point_id}")
+
+            # 5. Calcola drift
+            drift_preds = detector.predict(embedding.reshape(1, -1))
+            is_drift_val = drift_preds['data']['is_drift']
+            p_val_val = drift_preds['data']['p_val']
+            is_drift = bool(is_drift_val[0] if isinstance(is_drift_val, (list, np.ndarray)) else is_drift_val)
+            p_value = float(p_val_val[0] if isinstance(p_val_val, (list, np.ndarray)) else p_val_val)
+            logger.info(f"Drift: p_value={p_value}, is_drift={is_drift}")
+
+            # 6. Salva in PostgreSQL
+            cur = pg_conn.cursor()
+            cur.execute(
+                """
+                INSERT INTO drift_results
+                (model_name, model_version, timestamp, drift_score, threshold, drift_detected, input_path, qdrant_point_id)
+                VALUES (%s, %s, %s, %s, %s, %s, %s, %s)
+                """,
+                ("mnist", "v1", datetime.datetime.utcnow(), p_value, THRESHOLD, is_drift, object_name, point_id)
+            )
+            pg_conn.commit()
+            cur.close()
+            logger.info(f"Verdetto salvato in PostgreSQL per {object_name}")
+
+        except Exception as e:
+            logger.error(f"Errore durante la pipeline di drift per l'immagine {i}: {e}", exc_info=True)
+            # Continua con la prossima immagine o inoltra comunque la richiesta
+
+    # 7. Inoltra al predictor
+    try:
+        async with httpx.AsyncClient() as client:
+            resp = await client.post(PREDICTOR_URL, json=payload, timeout=10.0)
+            logger.info(f"Richiesta inoltrata al predictor, status={resp.status_code}")
+            return JSONResponse(content=resp.json(), status_code=resp.status_code)
+    except Exception as e:
+        logger.error(f"Errore nell'inoltro al predictor: {e}")
+        return JSONResponse(content={"error": "Predictor non raggiungibile"}, status_code=503)

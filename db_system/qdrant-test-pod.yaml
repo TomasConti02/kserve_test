@@ -1,0 +1,99 @@
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: qdrant-test-script
+  namespace: drift-system
+data:
+  test_qdrant.py: |
+    from qdrant_client import QdrantClient
+    from qdrant_client.http.models import Distance, VectorParams, PointStruct
+    import time
+    import sys
+
+    host = "qdrant.drift-system.svc.cluster.local"
+    port = 6333
+
+    print(f"Connessione a Qdrant su {host}:{port}...")
+    client = QdrantClient(host=host, port=port, prefer_grpc=False)
+
+    for i in range(30):
+        try:
+            client.get_collections()
+            print("✅ Qdrant pronto.")
+            break
+        except Exception as e:
+            print(f"⏳ Tentativo {i+1}/30: {e}")
+            time.sleep(1)
+    else:
+        print("❌ Qdrant non risponde dopo 30 secondi.")
+        sys.exit(1)
+
+    collection_name = "test_collection"
+    try:
+        client.delete_collection(collection_name)
+        print(f"Collection '{collection_name}' eliminata (esisteva).")
+    except:
+        pass
+
+    client.create_collection(
+        collection_name=collection_name,
+        vectors_config=VectorParams(size=4, distance=Distance.COSINE),
+    )
+    print(f"✅ Collection '{collection_name}' creata con dimensione 4.")
+
+    points = [
+        PointStruct(id=1, vector=[0.1, 0.2, 0.3, 0.4], payload={"name": "primo"}),
+        PointStruct(id=2, vector=[0.5, 0.6, 0.7, 0.8], payload={"name": "secondo"}),
+    ]
+    client.upsert(collection_name=collection_name, points=points)
+    print("✅ Due punti inseriti.")
+
+    # Utilizzo corretto del metodo query_points (nelle versioni recenti)
+    result = client.query_points(
+        collection_name=collection_name,
+        query=[0.1, 0.2, 0.3, 0.4],
+        limit=1
+    )
+    print("🔍 Risultato della ricerca:")
+    if hasattr(result, 'points'):
+        points_result = result.points
+    else:
+        points_result = result
+    for res in points_result:
+        print(f"   id: {res.id}, score: {res.score}, payload: {res.payload}")
+
+    if points_result and points_result[0].id == 1:
+        print("✅ Test di ricerca superato.")
+    else:
+        print("❌ Test di ricerca fallito.")
+        sys.exit(1)
+
+    print("\n🎉 Qdrant funziona correttamente nel cluster.")
+---
+apiVersion: v1
+kind: Pod
+metadata:
+  name: qdrant-test
+  namespace: drift-system
+spec:
+  containers:
+  - name: test
+    image: python:3.9-slim
+    command: ["/bin/sh", "-c"]
+    args:
+      - |
+        echo "Aggiorno pip e installo qdrant-client..."
+        pip install --quiet --upgrade pip
+        pip install --quiet --no-cache-dir --upgrade qdrant-client
+        python /scripts/test_qdrant.py
+        echo "Test completato, pod in attesa per debug..."
+        sleep infinity
+    volumeMounts:
+    - name: script
+      mountPath: /scripts
+  volumes:
+  - name: script
+    configMap:
+      name: qdrant-test-script
+  restartPolicy: Never
